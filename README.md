@@ -107,7 +107,7 @@ curl -X POST "https://your-btcpay.com/api/v1/stores/{storeId}/invoices" \
     "amount": 0.00012,
     "currency": "BTC",
     "metadata": {
-      "phoneNumber": "+255XXXXXXXXX",
+      "phoneNumber": "+255754xxxxx4",
       "amountTZS": 25000,
       "recipientName": "John Doe"
     }
