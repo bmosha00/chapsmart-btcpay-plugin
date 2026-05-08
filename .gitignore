@@ -8,3 +8,4 @@ obj/
 /btcpayserver/
 *.DS_Store
 /tmp/
+btcpayserver/
