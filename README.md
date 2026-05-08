@@ -209,7 +209,7 @@ Your external payout API must implement the following endpoint:
 **Request:**
 ```json
 {
-  "phoneNumber": "+255XXXXXXXXX",
+  "phoneNumber": "+255754xxxx94",
   "amountTZS": 25000,
   "recipientName": "John Doe",
   "invoiceId": "ABC123",
