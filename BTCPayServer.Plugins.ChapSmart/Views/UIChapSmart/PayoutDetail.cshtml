@@ -1,0 +1,79 @@
+@model BTCPayServer.Plugins.ChapSmart.Controllers.ChapSmartPayoutDetailViewModel
+@{
+    ViewData["Title"] = "Payout Detail";
+    Layout = "../Shared/_NavLayout.cshtml";
+}
+
+<div class="row">
+    <div class="col-xxl-constrain col-xl-8">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3><span>&#x1F4B1;</span> Payout Detail</h3>
+            <a asp-action="Dashboard" asp-route-storeId="@Model.StoreId" class="btn btn-sm btn-outline-secondary">
+                ← Back to Dashboard
+            </a>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Payout ID</dt>
+                    <dd class="col-sm-8"><code>@Model.Payout.Id</code></dd>
+
+                    <dt class="col-sm-4">Status</dt>
+                    <dd class="col-sm-8">
+                        @switch (Model.Payout.Status)
+                        {
+                            case "completed":
+                                <span class="badge bg-success">Completed</span>
+                                break;
+                            case "failed":
+                                <span class="badge bg-danger">Failed</span>
+                                break;
+                            case "processing":
+                                <span class="badge bg-warning">Processing</span>
+                                break;
+                            default:
+                                <span class="badge bg-secondary">@Model.Payout.Status</span>
+                                break;
+                        }
+                    </dd>
+
+                    <dt class="col-sm-4">Phone Number</dt>
+                    <dd class="col-sm-8">@Model.Payout.PhoneNumber</dd>
+
+                    <dt class="col-sm-4">Recipient</dt>
+                    <dd class="col-sm-8">@Model.Payout.RecipientName</dd>
+
+                    <dt class="col-sm-4">Amount (TZS)</dt>
+                    <dd class="col-sm-8"><strong>@Model.Payout.AmountTZS.ToString("N0") TZS</strong></dd>
+
+                    <dt class="col-sm-4">Amount (BTC)</dt>
+                    <dd class="col-sm-8">@Model.Payout.AmountBTC BTC</dd>
+
+                    <dt class="col-sm-4">BTCPay Invoice</dt>
+                    <dd class="col-sm-8">
+                        <a href="/invoices/@Model.Payout.InvoiceId">@Model.Payout.InvoiceId</a>
+                    </dd>
+
+                    <dt class="col-sm-4">Provider Transaction</dt>
+                    <dd class="col-sm-8">@(Model.Payout.PaymentProviderTransId ?? "—")</dd>
+
+                    <dt class="col-sm-4">Created</dt>
+                    <dd class="col-sm-8">@Model.Payout.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss UTC")</dd>
+
+                    <dt class="col-sm-4">Completed</dt>
+                    <dd class="col-sm-8">@(Model.Payout.CompletedAt?.ToString("yyyy-MM-dd HH:mm:ss UTC") ?? "—")</dd>
+
+                    <dt class="col-sm-4">Retry Count</dt>
+                    <dd class="col-sm-8">@Model.Payout.RetryCount</dd>
+
+                    @if (!string.IsNullOrEmpty(Model.Payout.ErrorMessage))
+                    {
+                        <dt class="col-sm-4">Error</dt>
+                        <dd class="col-sm-8"><span class="text-danger">@Model.Payout.ErrorMessage</span></dd>
+                    }
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>

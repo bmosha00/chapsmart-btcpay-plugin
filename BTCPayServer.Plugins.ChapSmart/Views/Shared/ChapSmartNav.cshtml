@@ -1,0 +1,11 @@
+@using BTCPayServer
+@using BTCPayServer.Client
+@{
+    var store = Context.GetStoreData();
+    if (store is null) return;
+}
+<li class="nav-item" permission="@Policies.CanModifyStoreSettings">
+    <a asp-area="" asp-controller="UIChapSmart" asp-action="EditChapSmart" asp-route-storeId="@store.Id" id="StoreNav-ChapSmart">
+        <span>&#x1F4B1;</span> ChapSmart
+    </a>
+</li>

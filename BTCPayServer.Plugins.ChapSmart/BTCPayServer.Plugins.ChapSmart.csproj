@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
 
   <!-- Plugin specific properties -->
   <PropertyGroup>
-    <Product>BTCPay Server Plugin Template</Product>
-    <Description>A template for your own BTCPay Server plugin.</Description>
+    <Product>ChapSmart - M-Pesa Payout</Product>
+    <Description>Automatic Bitcoin to M-Pesa payout for Tanzania. When a BTCPay invoice is paid, ChapSmart automatically sends TZS to the recipient via M-Pesa.</Description>
     <Version>1.0.0</Version>
   </PropertyGroup>
 
