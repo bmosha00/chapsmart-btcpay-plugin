@@ -89,7 +89,7 @@ For ChapSmart to process a payout, the BTCPay invoice must include the following
 
 ```json
 {
-  "phoneNumber": "+255XXXXXXXXX",
+  "phoneNumber": "+255754xxxx94",
   "amountTZS": 25000,
   "recipientName": "John Doe"
 }
