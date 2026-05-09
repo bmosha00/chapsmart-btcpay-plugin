@@ -15,8 +15,8 @@ public class Plugin : BaseBTCPayServerPlugin
 
     public override void Execute(IServiceCollection services)
     {
-        // UI: Add ChapSmart to store navigation
-        services.AddUIExtension("header-nav", "ChapSmartNav");
+        // UI: Add ChapSmart to store sidebar navigation
+        services.AddUIExtension("store-integrations-nav", "ChapSmartNav");
 
         // Services
         services.AddSingleton<ChapSmartSettingsRepository>();

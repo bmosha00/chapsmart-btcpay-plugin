@@ -1,82 +1,117 @@
-@model BTCPayServer.Plugins.ChapSmart.Controllers.ChapSmartSettingsViewModel
+@model ChapSmartSettingsViewModel
 @{
-    ViewData["Title"] = "ChapSmart - M-Pesa Payout";
-    Layout = "../Shared/_NavLayout.cshtml";
+    ViewData["Title"] = "ChapSmart Settings";
+    
 }
 
 <div class="row">
     <div class="col-xxl-constrain col-xl-8">
-        <h3 class="mb-3">
-            <span>&#x1F4B1;</span> ChapSmart — M-Pesa Payout Settings
+        <h3 class="mb-2">
+            <span>💱</span> ChapSmart — M-Pesa Payout
         </h3>
-        <p class="text-muted mb-4">
+        <p class="text-secondary mb-4">
             Automatically send TZS to M-Pesa when a BTCPay invoice is paid.
             Invoices must include <code>phoneNumber</code> and <code>amountTZS</code> in their metadata.
         </p>
 
+        @if (ViewBag.SuccessMessage is string successMsg)
+        {
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                @successMsg
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        }
+
+        @if (ViewBag.ErrorMessage is string errorMsg)
+        {
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                @errorMsg
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        }
+
         <form method="post" asp-action="SaveSettings" asp-route-storeId="@Model.StoreId">
-            <div class="form-group mb-3">
-                <label asp-for="Settings.Enabled" class="form-check-label">
-                    <input asp-for="Settings.Enabled" type="checkbox" class="form-check-input" />
-                    Enable ChapSmart M-Pesa Payouts
-                </label>
+            <!-- General Settings -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">General</h5>
+
+                    <div class="form-check mb-3">
+                        <input asp-for="Settings.Enabled" type="checkbox" class="form-check-input" />
+                        <label asp-for="Settings.Enabled" class="form-check-label">
+                            Enable ChapSmart M-Pesa payouts for this store
+                        </label>
+                    </div>
+
+                    <div class="form-check mb-1">
+                        <input asp-for="Settings.AutoPayout" type="checkbox" class="form-check-input" />
+                        <label asp-for="Settings.AutoPayout" class="form-check-label">
+                            Automatic payout on invoice settlement
+                        </label>
+                        <div class="form-text">When disabled, payouts appear in the dashboard for manual review.</div>
+                    </div>
+                </div>
             </div>
 
-            <div class="form-group mb-3">
-                <label asp-for="Settings.AutoPayout" class="form-check-label">
-                    <input asp-for="Settings.AutoPayout" type="checkbox" class="form-check-input" />
-                    Automatic payout (trigger M-Pesa immediately when invoice is settled)
-                </label>
+            <!-- API Connection -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">API Connection</h5>
+
+                    <div class="mb-3">
+                        <label asp-for="Settings.ChapSmartApiUrl" class="form-label">API URL</label>
+                        <input asp-for="Settings.ChapSmartApiUrl" class="form-control" placeholder="https://api.chapsmart.com" />
+                        <div class="form-text">Your ChapSmart payout API base URL.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Settings.ChapSmartApiKey" class="form-label">API Key</label>
+                        <input asp-for="Settings.ChapSmartApiKey" class="form-control" placeholder="chp_..." />
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Settings.ChapSmartApiSecret" class="form-label">API Secret</label>
+                        <input asp-for="Settings.ChapSmartApiSecret" class="form-control" type="password" />
+                    </div>
+                </div>
             </div>
 
-            <hr class="my-4" />
-            <h5>API Connection</h5>
+            <!-- Payout Configuration -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Payout Configuration</h5>
 
-            <div class="form-group mb-3">
-                <label asp-for="Settings.ChapSmartApiUrl" class="form-label">ChapSmart API URL</label>
-                <input asp-for="Settings.ChapSmartApiUrl" class="form-control" placeholder="https://your-api-url.com" />
-                <span class="text-muted form-text">The URL of your ChapSmart backend API.</span>
+                    <div class="mb-3">
+                        <label asp-for="Settings.FeePercent" class="form-label">Fee Percent (%)</label>
+                        <input asp-for="Settings.FeePercent" class="form-control" type="number" step="0.01" min="0" max="10" />
+                        <div class="form-text">Fee charged on each payout (e.g., 2.2).</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Settings.UsdToTzsRate" class="form-label">USD/TZS Exchange Rate</label>
+                        <input asp-for="Settings.UsdToTzsRate" class="form-control" type="number" step="0.01" />
+                        <div class="form-text">Current exchange rate for USD to TZS conversion.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Settings.DailyLimit" class="form-label">Daily Payout Limit (TZS)</label>
+                        <input asp-for="Settings.DailyLimit" class="form-control" type="number" step="1000" />
+                        <div class="form-text">Maximum total TZS payouts per day for this store.</div>
+                    </div>
+                </div>
             </div>
 
-            <div class="form-group mb-3">
-                <label asp-for="Settings.ChapSmartApiKey" class="form-label">API Key</label>
-                <input asp-for="Settings.ChapSmartApiKey" class="form-control" placeholder="chp_..." />
-            </div>
-
-            <div class="form-group mb-3">
-                <label asp-for="Settings.ChapSmartApiSecret" class="form-label">API Secret</label>
-                <input asp-for="Settings.ChapSmartApiSecret" class="form-control" type="password" />
-            </div>
-
-            <hr class="my-4" />
-            <h5>Payout Configuration</h5>
-
-            <div class="form-group mb-3">
-                <label asp-for="Settings.FeePercent" class="form-label">Fee Percent</label>
-                <input asp-for="Settings.FeePercent" class="form-control" type="number" step="0.01" min="0" max="10" />
-                <span class="text-muted form-text">Percentage fee charged on each payout (e.g., 2.2).</span>
-            </div>
-
-            <div class="form-group mb-3">
-                <label asp-for="Settings.UsdToTzsRate" class="form-label">USD/TZS Rate</label>
-                <input asp-for="Settings.UsdToTzsRate" class="form-control" type="number" step="0.01" />
-                <span class="text-muted form-text">Exchange rate for USD to TZS conversion.</span>
-            </div>
-
-            <div class="form-group mb-3">
-                <label asp-for="Settings.DailyLimit" class="form-label">Daily Payout Limit (TZS)</label>
-                <input asp-for="Settings.DailyLimit" class="form-control" type="number" step="1000" />
-                <span class="text-muted form-text">Maximum total TZS payouts per day for this store.</span>
-            </div>
-
-            <div class="d-flex gap-3 mt-4">
+            <!-- Action Buttons -->
+            <div class="d-flex gap-3">
                 <button type="submit" class="btn btn-primary" id="SaveSettings">Save Settings</button>
-                <button type="submit" formaction="@Url.Action("TestConnection", "UIChapSmart", new { storeId = Model.StoreId })"
+                <button type="submit"
+                        formaction="@Url.Action("TestConnection", "UIChapSmart", new { storeId = Model.StoreId })"
                         class="btn btn-secondary" id="TestConnection">
                     Test Connection
                 </button>
-                <a asp-action="Dashboard" asp-route-storeId="@Model.StoreId" class="btn btn-outline-info">
-                    View Payout Dashboard
+                <a asp-action="Dashboard" asp-route-storeId="@Model.StoreId"
+                   class="btn btn-outline-info">
+                    Payout Dashboard →
                 </a>
             </div>
         </form>

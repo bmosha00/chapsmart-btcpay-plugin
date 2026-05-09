@@ -1,14 +1,15 @@
-@model BTCPayServer.Plugins.ChapSmart.Controllers.ChapSmartPayoutDetailViewModel
+@model ChapSmartPayoutDetailViewModel
 @{
     ViewData["Title"] = "Payout Detail";
-    Layout = "../Shared/_NavLayout.cshtml";
+    
 }
 
 <div class="row">
     <div class="col-xxl-constrain col-xl-8">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3><span>&#x1F4B1;</span> Payout Detail</h3>
-            <a asp-action="Dashboard" asp-route-storeId="@Model.StoreId" class="btn btn-sm btn-outline-secondary">
+            <h3><span>💱</span> Payout Detail</h3>
+            <a asp-action="Dashboard" asp-route-storeId="@Model.StoreId"
+               class="btn btn-sm btn-outline-secondary">
                 ← Back to Dashboard
             </a>
         </div>
@@ -30,7 +31,10 @@
                                 <span class="badge bg-danger">Failed</span>
                                 break;
                             case "processing":
-                                <span class="badge bg-warning">Processing</span>
+                                <span class="badge bg-warning text-dark">Processing</span>
+                                break;
+                            case "retrying":
+                                <span class="badge bg-info">Retrying</span>
                                 break;
                             default:
                                 <span class="badge bg-secondary">@Model.Payout.Status</span>
@@ -42,7 +46,7 @@
                     <dd class="col-sm-8">@Model.Payout.PhoneNumber</dd>
 
                     <dt class="col-sm-4">Recipient</dt>
-                    <dd class="col-sm-8">@Model.Payout.RecipientName</dd>
+                    <dd class="col-sm-8">@(Model.Payout.RecipientName ?? "—")</dd>
 
                     <dt class="col-sm-4">Amount (TZS)</dt>
                     <dd class="col-sm-8"><strong>@Model.Payout.AmountTZS.ToString("N0") TZS</strong></dd>
@@ -55,11 +59,11 @@
                         <a href="/invoices/@Model.Payout.InvoiceId">@Model.Payout.InvoiceId</a>
                     </dd>
 
-                    <dt class="col-sm-4">Provider Transaction</dt>
+                    <dt class="col-sm-4">Selcom Transaction ID</dt>
                     <dd class="col-sm-8">@(Model.Payout.PaymentProviderTransId ?? "—")</dd>
 
                     <dt class="col-sm-4">Created</dt>
-                    <dd class="col-sm-8">@Model.Payout.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss UTC")</dd>
+                    <dd class="col-sm-8">@Model.Payout.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss") UTC</dd>
 
                     <dt class="col-sm-4">Completed</dt>
                     <dd class="col-sm-8">@(Model.Payout.CompletedAt?.ToString("yyyy-MM-dd HH:mm:ss UTC") ?? "—")</dd>
@@ -71,6 +75,12 @@
                     {
                         <dt class="col-sm-4">Error</dt>
                         <dd class="col-sm-8"><span class="text-danger">@Model.Payout.ErrorMessage</span></dd>
+                    }
+
+                    @if (!string.IsNullOrEmpty(Model.Payout.ResponseData))
+                    {
+                        <dt class="col-sm-4">Response Data</dt>
+                        <dd class="col-sm-8"><pre class="bg-light p-2 rounded small mb-0">@Model.Payout.ResponseData</pre></dd>
                     }
                 </dl>
             </div>

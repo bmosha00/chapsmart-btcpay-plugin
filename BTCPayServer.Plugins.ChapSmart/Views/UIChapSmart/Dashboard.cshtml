@@ -1,124 +1,145 @@
-@model BTCPayServer.Plugins.ChapSmart.Controllers.ChapSmartDashboardViewModel
+@model ChapSmartDashboardViewModel
 @{
-    ViewData["Title"] = "ChapSmart - Payout Dashboard";
-    Layout = "../Shared/_NavLayout.cshtml";
+    ViewData["Title"] = "ChapSmart Dashboard";
+    
 }
 
 <div class="row">
     <div class="col-xxl-constrain">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3><span>&#x1F4B1;</span> ChapSmart Payout Dashboard</h3>
-            <a asp-action="Settings" asp-route-storeId="@Model.StoreId" class="btn btn-sm btn-outline-secondary">
+            <h3><span>💱</span> Payout Dashboard</h3>
+            <a asp-action="EditChapSmart" asp-route-storeId="@Model.StoreId"
+               class="btn btn-sm btn-outline-secondary">
                 ← Settings
             </a>
         </div>
 
         <!-- Stats Cards -->
-        <div class="row mb-4">
-            <div class="col-md-3">
+        <div class="row mb-4 g-3">
+            <div class="col-6 col-md-3">
                 <div class="card">
-                    <div class="card-body text-center">
-                        <h6 class="card-subtitle text-muted">Total Payouts</h6>
-                        <h3 class="card-title mt-2">@Model.Stats.TotalPayouts</h3>
+                    <div class="card-body text-center py-4">
+                        <div class="text-secondary small mb-1">Total Payouts</div>
+                        <div class="fs-3 fw-bold">@Model.Stats.TotalPayouts</div>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-3">
                 <div class="card">
-                    <div class="card-body text-center">
-                        <h6 class="card-subtitle text-muted">Completed</h6>
-                        <h3 class="card-title mt-2 text-success">@Model.Stats.CompletedPayouts</h3>
+                    <div class="card-body text-center py-4">
+                        <div class="text-secondary small mb-1">Completed</div>
+                        <div class="fs-3 fw-bold text-success">@Model.Stats.CompletedPayouts</div>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-3">
                 <div class="card">
-                    <div class="card-body text-center">
-                        <h6 class="card-subtitle text-muted">Failed</h6>
-                        <h3 class="card-title mt-2 text-danger">@Model.Stats.FailedPayouts</h3>
+                    <div class="card-body text-center py-4">
+                        <div class="text-secondary small mb-1">Failed</div>
+                        <div class="fs-3 fw-bold text-danger">@Model.Stats.FailedPayouts</div>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-3">
                 <div class="card">
-                    <div class="card-body text-center">
-                        <h6 class="card-subtitle text-muted">Total Volume</h6>
-                        <h3 class="card-title mt-2">@Model.Stats.TotalAmountTZS.ToString("N0") TZS</h3>
+                    <div class="card-body text-center py-4">
+                        <div class="text-secondary small mb-1">Volume (TZS)</div>
+                        <div class="fs-3 fw-bold">@Model.Stats.TotalAmountTZS.ToString("N0")</div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Filter -->
-        <div class="mb-3">
+        <!-- Status Filter -->
+        <div class="mb-3 d-flex gap-2 flex-wrap">
             <a asp-action="Dashboard" asp-route-storeId="@Model.StoreId"
-               class="btn btn-sm @(Model.FilterStatus == null ? "btn-primary" : "btn-outline-primary")">All</a>
+               class="btn btn-sm @(Model.FilterStatus == null ? "btn-primary" : "btn-outline-primary")">
+                All
+            </a>
             <a asp-action="Dashboard" asp-route-storeId="@Model.StoreId" asp-route-status="completed"
-               class="btn btn-sm @(Model.FilterStatus == "completed" ? "btn-success" : "btn-outline-success")">Completed</a>
+               class="btn btn-sm @(Model.FilterStatus == "completed" ? "btn-success" : "btn-outline-success")">
+                Completed
+            </a>
             <a asp-action="Dashboard" asp-route-storeId="@Model.StoreId" asp-route-status="failed"
-               class="btn btn-sm @(Model.FilterStatus == "failed" ? "btn-danger" : "btn-outline-danger")">Failed</a>
+               class="btn btn-sm @(Model.FilterStatus == "failed" ? "btn-danger" : "btn-outline-danger")">
+                Failed
+            </a>
             <a asp-action="Dashboard" asp-route-storeId="@Model.StoreId" asp-route-status="processing"
-               class="btn btn-sm @(Model.FilterStatus == "processing" ? "btn-warning" : "btn-outline-warning")">Processing</a>
+               class="btn btn-sm @(Model.FilterStatus == "processing" ? "btn-warning" : "btn-outline-warning")">
+                Processing
+            </a>
         </div>
 
         <!-- Payouts Table -->
-        @if (Model.Payouts.Any())
+        @if (Model.Payouts != null && Model.Payouts.Any())
         {
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Phone</th>
-                        <th>Recipient</th>
-                        <th>Amount (TZS)</th>
-                        <th>Status</th>
-                        <th>Invoice</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var payout in Model.Payouts)
-                    {
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
                         <tr>
-                            <td>@payout.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
-                            <td>@payout.PhoneNumber</td>
-                            <td>@payout.RecipientName</td>
-                            <td>@payout.AmountTZS.ToString("N0")</td>
-                            <td>
-                                @switch (payout.Status)
-                                {
-                                    case "completed":
-                                        <span class="badge bg-success">Completed</span>
-                                        break;
-                                    case "failed":
-                                        <span class="badge bg-danger">Failed</span>
-                                        break;
-                                    case "processing":
-                                        <span class="badge bg-warning">Processing</span>
-                                        break;
-                                    default:
-                                        <span class="badge bg-secondary">@payout.Status</span>
-                                        break;
-                                }
-                            </td>
-                            <td>
-                                <a href="/invoices/@payout.InvoiceId" class="text-truncate" style="max-width: 100px; display: inline-block;">
-                                    @payout.InvoiceId
-                                </a>
-                            </td>
-                            <td>
-                                <a asp-action="PayoutDetail" asp-route-storeId="@Model.StoreId" asp-route-payoutId="@payout.Id"
-                                   class="btn btn-sm btn-outline-info">Detail</a>
-                            </td>
+                            <th>Date</th>
+                            <th>Phone</th>
+                            <th>Recipient</th>
+                            <th>Amount (TZS)</th>
+                            <th>Status</th>
+                            <th>Invoice</th>
+                            <th></th>
                         </tr>
-                    }
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @foreach (var payout in Model.Payouts)
+                        {
+                            <tr>
+                                <td>@payout.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@payout.PhoneNumber</td>
+                                <td>@(payout.RecipientName ?? "—")</td>
+                                <td class="fw-semibold">@payout.AmountTZS.ToString("N0")</td>
+                                <td>
+                                    @switch (payout.Status)
+                                    {
+                                        case "completed":
+                                            <span class="badge bg-success">Completed</span>
+                                            break;
+                                        case "failed":
+                                            <span class="badge bg-danger">Failed</span>
+                                            break;
+                                        case "processing":
+                                            <span class="badge bg-warning text-dark">Processing</span>
+                                            break;
+                                        case "retrying":
+                                            <span class="badge bg-info">Retrying</span>
+                                            break;
+                                        default:
+                                            <span class="badge bg-secondary">@payout.Status</span>
+                                            break;
+                                    }
+                                </td>
+                                <td>
+                                    <a href="/invoices/@payout.InvoiceId"
+                                       class="text-truncate d-inline-block" style="max-width: 120px;"
+                                       title="@payout.InvoiceId">
+                                        @payout.InvoiceId
+                                    </a>
+                                </td>
+                                <td>
+                                    <a asp-action="PayoutDetail"
+                                       asp-route-storeId="@Model.StoreId"
+                                       asp-route-payoutId="@payout.Id"
+                                       class="btn btn-sm btn-outline-info">
+                                        Detail
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         }
         else
         {
-            <div class="alert alert-info">
-                No payouts found. Payouts will appear here when BTCPay invoices with M-Pesa metadata are settled.
+            <div class="alert alert-info mt-3">
+                <strong>No payouts yet.</strong> Payouts will appear here when BTCPay invoices with
+                <code>phoneNumber</code> and <code>amountTZS</code> metadata are settled.
             </div>
         }
     </div>
