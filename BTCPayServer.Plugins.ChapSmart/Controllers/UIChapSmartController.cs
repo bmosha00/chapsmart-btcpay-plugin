@@ -32,6 +32,16 @@ public class UIChapSmartController : Controller
 
     private StoreData CurrentStore => this.HttpContext.GetStoreData();
 
+    [HttpGet("stores/{storeId}/plugins/chapsmart/logo.png")]
+    [AllowAnonymous]
+    public IActionResult Logo()
+    {
+        var assembly = typeof(Plugin).Assembly;
+        var stream = assembly.GetManifestResourceStream("BTCPayServer.Plugins.ChapSmart.Resources.img.chapsmart-logo.png");
+        if (stream == null) return NotFound();
+        return File(stream, "image/png");
+    }
+
     [HttpGet("stores/{storeId}/plugins/chapsmart")]
     public async Task<IActionResult> EditChapSmart()
     {
