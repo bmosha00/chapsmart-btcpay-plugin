@@ -1,31 +1,33 @@
 @model ChapSmartPayoutDetailViewModel
 @{
-    ViewData["Title"] = "Payout Detail";
-    
+    ViewData["Title"] = "Cashout Detail";
 }
 
 <div class="row">
     <div class="col-xxl-constrain col-xl-8">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3><img src="/stores/@Model.StoreId/plugins/chapsmart/logo.png" alt="ChapSmart" style="height:32px;vertical-align:middle;margin-right:8px;" /> Payout Detail</h3>
+            <h3>
+                <img src="/stores/@Model.StoreId/plugins/chapsmart/logo.png" alt="ChapSmart" style="height:32px;vertical-align:middle;margin-right:8px;" />
+                Cashout Detail
+            </h3>
             <a asp-action="Dashboard" asp-route-storeId="@Model.StoreId"
                class="btn btn-sm btn-outline-secondary">
-                ← Back to Dashboard
+                ← Back to History
             </a>
         </div>
 
         <div class="card">
             <div class="card-body">
                 <dl class="row mb-0">
-                    <dt class="col-sm-4">Payout ID</dt>
-                    <dd class="col-sm-8"><code>@Model.Payout.Id</code></dd>
+                    <dt class="col-sm-4">Cashout ID</dt>
+                    <dd class="col-sm-8"><code>@(Model.Payout.PaymentProviderTransId ?? "—")</code></dd>
 
                     <dt class="col-sm-4">Status</dt>
                     <dd class="col-sm-8">
                         @switch (Model.Payout.Status)
                         {
-                            case "completed":
-                                <span class="badge bg-success">Completed</span>
+                            case "lightning_paid":
+                                <span class="badge bg-success">Lightning Paid</span>
                                 break;
                             case "failed":
                                 <span class="badge bg-danger">Failed</span>
@@ -33,8 +35,8 @@
                             case "processing":
                                 <span class="badge bg-warning text-dark">Processing</span>
                                 break;
-                            case "retrying":
-                                <span class="badge bg-info">Retrying</span>
+                            case "paying_lightning":
+                                <span class="badge bg-info">Paying Lightning</span>
                                 break;
                             default:
                                 <span class="badge bg-secondary">@Model.Payout.Status</span>
@@ -42,25 +44,19 @@
                         }
                     </dd>
 
-                    <dt class="col-sm-4">Phone Number</dt>
-                    <dd class="col-sm-8">@Model.Payout.PhoneNumber</dd>
-
-                    <dt class="col-sm-4">Recipient</dt>
-                    <dd class="col-sm-8">@(Model.Payout.RecipientName ?? "—")</dd>
-
                     <dt class="col-sm-4">Amount (TZS)</dt>
                     <dd class="col-sm-8"><strong>@Model.Payout.AmountTZS.ToString("N0") TZS</strong></dd>
 
                     <dt class="col-sm-4">Amount (BTC)</dt>
-                    <dd class="col-sm-8">@Model.Payout.AmountBTC BTC</dd>
+                    <dd class="col-sm-8">@Model.Payout.AmountBTC BTC (@((Model.Payout.AmountBTC * 100000000m).ToString("N0")) sats)</dd>
 
                     <dt class="col-sm-4">BTCPay Invoice</dt>
                     <dd class="col-sm-8">
                         <a href="/invoices/@Model.Payout.InvoiceId">@Model.Payout.InvoiceId</a>
                     </dd>
 
-                    <dt class="col-sm-4">Selcom Transaction ID</dt>
-                    <dd class="col-sm-8">@(Model.Payout.PaymentProviderTransId ?? "—")</dd>
+                    <dt class="col-sm-4">Merchant ID</dt>
+                    <dd class="col-sm-8"><code>@Model.Payout.PhoneNumber</code></dd>
 
                     <dt class="col-sm-4">Created</dt>
                     <dd class="col-sm-8">@Model.Payout.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss") UTC</dd>
@@ -73,13 +69,13 @@
 
                     @if (!string.IsNullOrEmpty(Model.Payout.ErrorMessage))
                     {
-                        <dt class="col-sm-4">Error</dt>
+                        <dt class="col-sm-4">Error / Info</dt>
                         <dd class="col-sm-8"><span class="text-danger">@Model.Payout.ErrorMessage</span></dd>
                     }
 
                     @if (!string.IsNullOrEmpty(Model.Payout.ResponseData))
                     {
-                        <dt class="col-sm-4">Response Data</dt>
+                        <dt class="col-sm-4">API Response</dt>
                         <dd class="col-sm-8"><pre class="bg-light p-2 rounded small mb-0">@Model.Payout.ResponseData</pre></dd>
                     }
                 </dl>

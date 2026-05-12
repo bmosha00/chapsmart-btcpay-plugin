@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Configuration;
@@ -19,12 +18,8 @@ using Newtonsoft.Json.Linq;
 namespace BTCPayServer.Plugins.ChapSmart.Services;
 
 /// <summary>
-/// Background service that subscribes to BTCPay's event bus
-/// and triggers M-Pesa payout when an invoice is settled.
-/// 
-/// Case 2 only: The plugin calls /internal/payout, receives a bolt11
-/// Lightning invoice, and pays it from the merchant's Lightning wallet.
-/// ChapSmart receives the BTC and sends M-Pesa via webhook.
+/// Catches BTCPay invoice settlements and triggers ChapSmart cashout.
+/// Flow: Invoice settles → call /cashout → pay bolt11 → merchant gets M-Pesa.
 /// </summary>
 public class ChapSmartInvoiceHandler : IHostedService
 {
@@ -66,21 +61,20 @@ public class ChapSmartInvoiceHandler : IHostedService
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("[ChapSmart] Invoice handler started — listening for settled invoices");
+        _logger.LogInformation("[ChapSmart] Cashout handler started — listening for settled invoices");
         _subscription = _eventAggregator.SubscribeAsync<InvoiceEvent>(HandleInvoiceEvent);
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("[ChapSmart] Invoice handler stopped");
+        _logger.LogInformation("[ChapSmart] Cashout handler stopped");
         _subscription?.Dispose();
         return Task.CompletedTask;
     }
 
     private async Task HandleInvoiceEvent(InvoiceEvent invoiceEvent)
     {
-        // Only handle settled invoices
         if (invoiceEvent.Name != InvoiceEvent.MarkedCompleted &&
             invoiceEvent.Name != InvoiceEvent.Confirmed)
         {
@@ -92,32 +86,65 @@ public class ChapSmartInvoiceHandler : IHostedService
             var invoice = invoiceEvent.Invoice;
             var storeId = invoice.StoreId;
 
-            // Check if ChapSmart is enabled for this store
+            // Check if ChapSmart cashout is enabled for this store
             var settings = await _settingsRepository.GetSettings(storeId);
-            if (settings == null || !settings.Enabled || !settings.AutoPayout)
+            if (settings == null || !settings.Enabled || !settings.AutoCashout)
+                return;
+
+            if (string.IsNullOrEmpty(settings.MerchantId))
             {
+                _logger.LogWarning("[ChapSmart] No MerchantId configured for store {StoreId}", storeId);
                 return;
             }
 
-            // Extract M-Pesa metadata from the invoice
+            // Determine amountTZS: from metadata or skip if not present
+            decimal amountTZS = 0;
             var metadata = invoice.Metadata?.ToJObject();
-            if (metadata == null) return;
-
-            var phoneNumber = metadata.Value<string>("phoneNumber");
-            var amountTZS = metadata.Value<decimal?>("amountTZS");
-            var recipientName = metadata.Value<string>("recipientName") ?? "Customer";
-
-            // If no phone number or amount, this invoice isn't a ChapSmart payout
-            if (string.IsNullOrEmpty(phoneNumber) || !amountTZS.HasValue || amountTZS.Value <= 0)
+            if (metadata != null)
             {
+                var metaAmount = metadata.Value<decimal?>("amountTZS");
+                if (metaAmount.HasValue && metaAmount.Value > 0)
+                    amountTZS = metaAmount.Value;
+            }
+
+            // If no amountTZS in metadata, this invoice isn't a cashout
+            if (amountTZS <= 0)
+                return;
+
+            // Check minimum
+            if (amountTZS < settings.MinCashout)
+            {
+                _logger.LogInformation(
+                    "[ChapSmart] Amount {Amount} TZS below minimum {Min} TZS. Skipping.",
+                    amountTZS, settings.MinCashout);
                 return;
             }
 
             _logger.LogInformation(
-                "[ChapSmart] Invoice {InvoiceId} settled — processing payout: {Amount} TZS to {Phone}",
-                invoice.Id, amountTZS.Value, phoneNumber);
+                "[ChapSmart] Invoice {InvoiceId} settled — requesting cashout: {Amount} TZS",
+                invoice.Id, amountTZS);
 
-            // Record the payout in our database
+            // Dedup: check if we already processed this invoice
+            Data.ChapSmartPayout existingPayout = null;
+            try
+            {
+                await using var dbCheck = _dbFactory.CreateContext();
+                existingPayout = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+                    .FirstOrDefaultAsync(dbCheck.Payouts, p => p.InvoiceId == invoice.Id);
+                if (existingPayout != null && existingPayout.Status != "failed")
+                {
+                    _logger.LogInformation(
+                        "[ChapSmart] Invoice {InvoiceId} already processed (status: {Status}). Skipping.",
+                        invoice.Id, existingPayout.Status);
+                    return;
+                }
+            }
+            catch (Exception dbEx)
+            {
+                _logger.LogWarning(dbEx, "[ChapSmart] Could not check dedup in DB. Continuing.");
+            }
+
+            // Record the cashout attempt
             Data.ChapSmartPayout payout = null;
             try
             {
@@ -127,9 +154,9 @@ public class ChapSmartInvoiceHandler : IHostedService
                     Id = Guid.NewGuid().ToString(),
                     StoreId = storeId,
                     InvoiceId = invoice.Id,
-                    PhoneNumber = phoneNumber,
-                    RecipientName = recipientName,
-                    AmountTZS = amountTZS.Value,
+                    PhoneNumber = settings.MerchantId, // Store merchantId in phone field for tracking
+                    RecipientName = "Merchant Cashout",
+                    AmountTZS = amountTZS,
                     AmountBTC = invoice.Price,
                     Status = "processing",
                     CreatedAt = DateTimeOffset.UtcNow
@@ -139,59 +166,49 @@ public class ChapSmartInvoiceHandler : IHostedService
             }
             catch (Exception dbEx)
             {
-                _logger.LogWarning(dbEx, "[ChapSmart] Could not save payout to DB (table may not exist). Continuing with API call.");
+                _logger.LogWarning(dbEx, "[ChapSmart] Could not save payout to DB. Continuing with API call.");
             }
 
-            // Call ChapSmart backend
-            var result = await _chapSmartService.TriggerMpesaPayout(
-                settings, phoneNumber, amountTZS.Value, recipientName, invoice.Id);
+            // Call ChapSmart cashout API
+            var result = await _chapSmartService.RequestCashout(
+                settings.ApiUrl, settings.MerchantId, amountTZS);
 
-            if (result.AlreadyProcessed)
+            if (!result.Success || string.IsNullOrEmpty(result.Bolt11))
             {
-                // Dedup — same invoiceId was already submitted
-                _logger.LogInformation(
-                    "[ChapSmart] Already processed (dedup) for invoice {InvoiceId}", invoice.Id);
-
-                await UpdatePayoutStatus(payout, "completed", "Already processed (dedup)", result.ResponseData);
+                _logger.LogWarning(
+                    "[ChapSmart] Cashout API error for invoice {InvoiceId}: {Error}",
+                    invoice.Id, result.Message);
+                await UpdatePayoutStatus(payout, "failed", result.Message, result.ResponseData, null);
+                return;
             }
-            else if (result.PaymentRequired && !string.IsNullOrEmpty(result.Bolt11))
+
+            _logger.LogInformation(
+                "[ChapSmart] Cashout ready: {Sats} sats, cashoutId: {CashoutId}, invoice: {InvoiceId}",
+                result.AmountSats, result.CashoutId, invoice.Id);
+
+            await UpdatePayoutStatus(payout, "paying_lightning", null, result.ResponseData, result.CashoutId);
+
+            // Pay the bolt11 from merchant's Lightning wallet
+            var lightningSuccess = await PayLightningInvoice(storeId, result.Bolt11);
+
+            if (lightningSuccess)
             {
-                // Case 2: Pay the Lightning invoice
                 _logger.LogInformation(
-                    "[ChapSmart] Paying bolt11: {Sats} sats, payoutId: {PayoutId}, invoice: {InvoiceId}",
-                    result.AmountSats, result.PayoutId, invoice.Id);
+                    "[ChapSmart] ✅ Lightning paid: {Sats} sats for invoice {InvoiceId}. " +
+                    "CashoutId: {CashoutId}. Backend will send M-Pesa.",
+                    result.AmountSats, invoice.Id, result.CashoutId);
 
-                await UpdatePayoutStatus(payout, "paying_lightning", null, result.ResponseData);
-
-                var lightningPaySuccess = await PayLightningInvoice(storeId, result.Bolt11);
-
-                if (lightningPaySuccess)
-                {
-                    _logger.LogInformation(
-                        "[ChapSmart] Lightning paid: {Sats} sats for invoice {InvoiceId}. Backend will send M-Pesa via webhook.",
-                        result.AmountSats, invoice.Id);
-
-                    await UpdatePayoutStatus(payout, "lightning_paid",
-                        $"Paid {result.AmountSats} sats. PayoutId: {result.PayoutId}. Awaiting M-Pesa.", null);
-                }
-                else
-                {
-                    _logger.LogWarning(
-                        "[ChapSmart] Lightning payment FAILED for invoice {InvoiceId}. Check Lightning wallet balance.",
-                        invoice.Id);
-
-                    await UpdatePayoutStatus(payout, "failed",
-                        "Lightning payment failed — check wallet balance", null);
-                }
+                await UpdatePayoutStatus(payout, "lightning_paid",
+                    $"Paid {result.AmountSats} sats. CashoutId: {result.CashoutId}. Awaiting M-Pesa.", null, result.CashoutId);
             }
             else
             {
-                // Error from backend
                 _logger.LogWarning(
-                    "[ChapSmart] Payout error for invoice {InvoiceId}: {Error}",
-                    invoice.Id, result.Message);
+                    "[ChapSmart] ❌ Lightning payment FAILED for invoice {InvoiceId}. Check wallet balance.",
+                    invoice.Id);
 
-                await UpdatePayoutStatus(payout, "failed", result.Message, result.ResponseData);
+                await UpdatePayoutStatus(payout, "failed",
+                    "Lightning payment failed — check wallet balance", null, result.CashoutId);
             }
         }
         catch (Exception ex)
@@ -201,10 +218,8 @@ public class ChapSmartInvoiceHandler : IHostedService
         }
     }
 
-    /// <summary>
-    /// Update payout status in the database. Silently fails if DB is unavailable.
-    /// </summary>
-    private async Task UpdatePayoutStatus(Data.ChapSmartPayout payout, string status, string errorMessage, string responseData)
+    private async Task UpdatePayoutStatus(Data.ChapSmartPayout payout, string status,
+        string errorMessage, string responseData, string cashoutId)
     {
         if (payout == null) return;
         try
@@ -213,7 +228,8 @@ public class ChapSmartInvoiceHandler : IHostedService
             payout.Status = status;
             if (errorMessage != null) payout.ErrorMessage = errorMessage;
             if (responseData != null) payout.ResponseData = responseData;
-            if (status == "completed" || status == "failed")
+            if (cashoutId != null) payout.PaymentProviderTransId = cashoutId;
+            if (status is "completed" or "failed")
                 payout.CompletedAt = DateTimeOffset.UtcNow;
             db.Payouts.Update(payout);
             await db.SaveChangesAsync();
@@ -224,10 +240,6 @@ public class ChapSmartInvoiceHandler : IHostedService
         }
     }
 
-    /// <summary>
-    /// Pay a bolt11 Lightning invoice using the merchant's BTCPay Lightning wallet.
-    /// BTC moves from merchant → ChapSmart to cover the M-Pesa payout.
-    /// </summary>
     private async Task<bool> PayLightningInvoice(string storeId, string bolt11)
     {
         try

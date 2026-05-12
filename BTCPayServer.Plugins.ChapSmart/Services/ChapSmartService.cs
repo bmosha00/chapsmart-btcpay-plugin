@@ -21,43 +21,29 @@ public class ChapSmartService
     }
 
     /// <summary>
-    /// Call ChapSmart API to trigger M-Pesa payout.
-    /// The backend returns one of:
-    ///   - paymentRequired: true + bolt11 (plugin must pay the Lightning invoice)
-    ///   - alreadyProcessed: true (dedup — same invoiceId was already submitted)
-    ///   - error (validation failure, price fetch failure, etc.)
+    /// Call ChapSmart cashout API. No authentication required.
+    /// Returns a bolt11 Lightning invoice to pay, or an error.
     /// </summary>
-    public async Task<ChapSmartPayoutResult> TriggerMpesaPayout(
-        ChapSmartSettings settings,
-        string phoneNumber,
-        decimal amountTZS,
-        string recipientName,
-        string invoiceId)
+    public async Task<CashoutResult> RequestCashout(string apiUrl, string merchantId, decimal amountTZS)
     {
         try
         {
             var client = _httpClientFactory.CreateClient("ChapSmart");
-            client.BaseAddress = new Uri(settings.ChapSmartApiUrl.TrimEnd('/') + "/");
-            client.DefaultRequestHeaders.Add("X-API-Key", settings.ChapSmartApiKey);
-            client.DefaultRequestHeaders.Add("X-API-Secret", settings.ChapSmartApiSecret);
+            var baseUrl = (apiUrl ?? "https://backend.chapsmart.com").TrimEnd('/');
 
-            var payload = new
-            {
-                phoneNumber,
-                amountTZS,
-                recipientName,
-                invoiceId,
-                source = "btcpay-plugin"
-            };
-
+            var payload = new { merchantId, amountTZS };
             var json = JsonSerializer.Serialize(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await client.PostAsync("api/v1/internal/payout", content);
+            _logger.LogInformation(
+                "[ChapSmart] Requesting cashout: {Amount} TZS for merchant {MerchantId}",
+                amountTZS, merchantId);
+
+            var response = await client.PostAsync($"{baseUrl}/api/v1/cashout", content);
             var responseBody = await response.Content.ReadAsStringAsync();
 
             _logger.LogInformation(
-                "[ChapSmart] /internal/payout response: {StatusCode} - {Body}",
+                "[ChapSmart] Cashout response: {StatusCode} - {Body}",
                 response.StatusCode, responseBody);
 
             if (response.IsSuccessStatusCode)
@@ -65,60 +51,32 @@ public class ChapSmartService
                 using var doc = JsonDocument.Parse(responseBody);
                 var root = doc.RootElement;
 
-                // Check for dedup response
-                if (root.TryGetProperty("alreadyProcessed", out var alreadyProcessed) &&
-                    alreadyProcessed.GetBoolean())
+                var bolt11 = root.TryGetProperty("bolt11", out var b) ? b.GetString() : null;
+                if (string.IsNullOrEmpty(bolt11))
                 {
-                    _logger.LogInformation(
-                        "[ChapSmart] Already processed (dedup) for invoice {InvoiceId}", invoiceId);
-
-                    return new ChapSmartPayoutResult
+                    return new CashoutResult
                     {
-                        AlreadyProcessed = true,
-                        Message = "Already processed",
+                        Success = false,
+                        Message = "No bolt11 in response",
                         ResponseData = responseBody
                     };
                 }
 
-                // Check for payment required (Case 2)
-                if (root.TryGetProperty("paymentRequired", out var paymentRequired) &&
-                    paymentRequired.GetBoolean())
+                return new CashoutResult
                 {
-                    var bolt11 = root.GetProperty("bolt11").GetString();
-                    var amountSats = root.TryGetProperty("amountSats", out var sats) ? sats.GetInt64() : 0;
-                    var payoutId = root.TryGetProperty("payoutId", out var pid) ? pid.GetString() : null;
-                    var expiresIn = root.TryGetProperty("expiresIn", out var exp) ? exp.GetInt32() : 600;
-
-                    _logger.LogInformation(
-                        "[ChapSmart] Payment required: {Sats} sats bolt11 for invoice {InvoiceId}, payoutId: {PayoutId}",
-                        amountSats, invoiceId, payoutId);
-
-                    return new ChapSmartPayoutResult
-                    {
-                        PaymentRequired = true,
-                        Bolt11 = bolt11,
-                        AmountSats = amountSats,
-                        PayoutId = payoutId,
-                        ExpiresIn = expiresIn,
-                        Message = "Lightning payment required",
-                        ResponseData = responseBody
-                    };
-                }
-
-                // Unexpected success response
-                _logger.LogWarning(
-                    "[ChapSmart] Unexpected 200 response for invoice {InvoiceId}: {Body}",
-                    invoiceId, responseBody);
-
-                return new ChapSmartPayoutResult
-                {
-                    Message = "Unexpected response format",
+                    Success = true,
+                    Bolt11 = bolt11,
+                    AmountSats = root.TryGetProperty("amountSats", out var s) ? s.GetInt64() : 0,
+                    AmountTZS = root.TryGetProperty("amountTZS", out var t) ? t.GetDecimal() : amountTZS,
+                    CashoutId = root.TryGetProperty("cashoutId", out var c) ? c.GetString() : null,
+                    ExpiresIn = root.TryGetProperty("expiresIn", out var e) ? e.GetInt32() : 600,
+                    MerchantName = root.TryGetProperty("merchantName", out var m) ? m.GetString() : null,
+                    Message = "Cashout ready",
                     ResponseData = responseBody
                 };
             }
             else
             {
-                // Error response
                 var errorMsg = responseBody;
                 try
                 {
@@ -126,14 +84,15 @@ public class ChapSmartService
                     if (errDoc.RootElement.TryGetProperty("error", out var errProp))
                         errorMsg = errProp.GetString();
                 }
-                catch { /* use raw body */ }
+                catch { }
 
                 _logger.LogWarning(
-                    "[ChapSmart] Payout error: {StatusCode} - {Error} for invoice {InvoiceId}",
-                    response.StatusCode, errorMsg, invoiceId);
+                    "[ChapSmart] Cashout error: {StatusCode} - {Error}",
+                    response.StatusCode, errorMsg);
 
-                return new ChapSmartPayoutResult
+                return new CashoutResult
                 {
+                    Success = false,
                     Message = $"{response.StatusCode}: {errorMsg}",
                     ResponseData = responseBody
                 };
@@ -141,59 +100,56 @@ public class ChapSmartService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[ChapSmart] Payout error for invoice {InvoiceId}", invoiceId);
-            return new ChapSmartPayoutResult
+            _logger.LogError(ex, "[ChapSmart] Cashout request failed");
+            return new CashoutResult
             {
-                Message = ex.Message,
-                ResponseData = null
+                Success = false,
+                Message = ex.Message
             };
         }
     }
 
     /// <summary>
-    /// Test the connection to ChapSmart API
+    /// Check cashout status (optional, for dashboard polling)
     /// </summary>
-    public async Task<bool> TestConnection(ChapSmartSettings settings)
+    public async Task<string> CheckCashoutStatus(string apiUrl, string cashoutId)
     {
         try
         {
             var client = _httpClientFactory.CreateClient("ChapSmart");
-            client.BaseAddress = new Uri(settings.ChapSmartApiUrl.TrimEnd('/') + "/");
-            client.DefaultRequestHeaders.Add("X-API-Key", settings.ChapSmartApiKey);
-            client.DefaultRequestHeaders.Add("X-API-Secret", settings.ChapSmartApiSecret);
+            var baseUrl = (apiUrl ?? "https://backend.chapsmart.com").TrimEnd('/');
 
-            var response = await client.GetAsync("api/v1/key/info");
-            return response.IsSuccessStatusCode;
+            var response = await client.GetAsync($"{baseUrl}/api/v1/cashout/status/{cashoutId}");
+            return await response.Content.ReadAsStringAsync();
         }
-        catch
+        catch (Exception ex)
         {
-            return false;
+            _logger.LogError(ex, "[ChapSmart] Status check failed for {CashoutId}", cashoutId);
+            return null;
         }
     }
 }
 
-public class ChapSmartPayoutResult
+public class CashoutResult
 {
+    public bool Success { get; set; }
     public string Message { get; set; }
     public string ResponseData { get; set; }
 
-    // Dedup
-    public bool AlreadyProcessed { get; set; }
-
-    // Case 2: Lightning payment required
-    public bool PaymentRequired { get; set; }
     public string Bolt11 { get; set; }
     public long AmountSats { get; set; }
-    public string PayoutId { get; set; }
+    public decimal AmountTZS { get; set; }
+    public string CashoutId { get; set; }
     public int ExpiresIn { get; set; }
+    public string MerchantName { get; set; }
 }
 
 public class ChapSmartSettings
 {
     public string StoreId { get; set; }
-    public string ChapSmartApiUrl { get; set; } = "";
-    public string ChapSmartApiKey { get; set; }
-    public string ChapSmartApiSecret { get; set; }
+    public string MerchantId { get; set; } = "";
+    public string ApiUrl { get; set; } = "https://backend.chapsmart.com";
     public bool Enabled { get; set; }
-    public bool AutoPayout { get; set; } = true;
+    public bool AutoCashout { get; set; } = true;
+    public decimal MinCashout { get; set; } = 2500m;
 }

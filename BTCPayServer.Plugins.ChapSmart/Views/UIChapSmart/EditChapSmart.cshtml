@@ -1,17 +1,17 @@
 @model ChapSmartSettingsViewModel
 @{
-    ViewData["Title"] = "ChapSmart Settings";
-    
+    ViewData["Title"] = "ChapSmart Cashout";
 }
 
 <div class="row">
     <div class="col-xxl-constrain col-xl-8">
         <h3 class="mb-2">
-            <img src="/stores/@Model.StoreId/plugins/chapsmart/logo.png" alt="ChapSmart" style="height:32px;vertical-align:middle;margin-right:8px;" /> ChapSmart — M-Pesa Payout
+            <img src="/stores/@Model.StoreId/plugins/chapsmart/logo.png" alt="ChapSmart" style="height:32px;vertical-align:middle;margin-right:8px;" />
+            ChapSmart Cashout
         </h3>
         <p class="text-secondary mb-4">
-            Automatically send TZS to M-Pesa when a BTCPay invoice is paid.
-            Invoices must include <code>phoneNumber</code> and <code>amountTZS</code> in their metadata.
+            Automatically convert your Bitcoin earnings to TZS via M-Pesa.
+            When a BTCPay invoice settles, ChapSmart sends TZS to your registered M-Pesa number.
         </p>
 
         @if (ViewBag.SuccessMessage is string successMsg)
@@ -31,61 +31,52 @@
         }
 
         <form method="post" asp-action="SaveSettings" asp-route-storeId="@Model.StoreId">
-            <!-- General Settings -->
             <div class="card mb-4">
                 <div class="card-body">
-                    <h5 class="card-title mb-3">General</h5>
+                    <h5 class="card-title mb-3">Cashout Settings</h5>
 
                     <div class="form-check mb-3">
                         <input asp-for="Settings.Enabled" type="checkbox" class="form-check-input" />
                         <label asp-for="Settings.Enabled" class="form-check-label">
-                            Enable ChapSmart M-Pesa payouts for this store
+                            Enable ChapSmart Cashout for this store
                         </label>
                     </div>
 
-                    <div class="form-check mb-1">
-                        <input asp-for="Settings.AutoPayout" type="checkbox" class="form-check-input" />
-                        <label asp-for="Settings.AutoPayout" class="form-check-label">
-                            Automatic payout on invoice settlement
+                    <div class="form-check mb-3">
+                        <input asp-for="Settings.AutoCashout" type="checkbox" class="form-check-input" />
+                        <label asp-for="Settings.AutoCashout" class="form-check-label">
+                            Automatic cashout on invoice settlement
                         </label>
-                        <div class="form-text">When disabled, payouts appear in the dashboard for manual review.</div>
+                        <div class="form-text">When enabled, every settled invoice with amountTZS metadata is automatically cashed out to your M-Pesa.</div>
+                    </div>
+
+                    <hr class="my-3" />
+
+                    <div class="mb-3">
+                        <label asp-for="Settings.MerchantId" class="form-label">Merchant ID</label>
+                        <input asp-for="Settings.MerchantId" class="form-control" placeholder="mch_xxxxxxxxxxxxxxxx" />
+                        <div class="form-text">Your ChapSmart Merchant ID. Contact ChapSmart to register and get your ID.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Settings.MinCashout" class="form-label">Minimum Cashout (TZS)</label>
+                        <input asp-for="Settings.MinCashout" class="form-control" type="number" step="500" min="2500" />
+                        <div class="form-text">Invoices below this amount will be skipped. Minimum: 2,500 TZS.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Settings.ApiUrl" class="form-label">API URL</label>
+                        <input asp-for="Settings.ApiUrl" class="form-control" placeholder="https://backend.chapsmart.com" />
+                        <div class="form-text">Only change for testing. Default: https://backend.chapsmart.com</div>
                     </div>
                 </div>
             </div>
 
-            <!-- API Connection -->
-            <div class="card mb-4">
-                <div class="card-body">
-                    <h5 class="card-title mb-3">API Connection</h5>
-
-                    <div class="mb-3">
-                        <label asp-for="Settings.ChapSmartApiUrl" class="form-label">API URL</label>
-                        <input asp-for="Settings.ChapSmartApiUrl" class="form-control" placeholder="https://api.chapsmart.com" />
-                        <div class="form-text">Your ChapSmart payout API base URL.</div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label asp-for="Settings.ChapSmartApiKey" class="form-label">API Key</label>
-                        <input asp-for="Settings.ChapSmartApiKey" class="form-control" placeholder="chp_..." />
-                    </div>
-
-                    <div class="mb-3">
-                        <label asp-for="Settings.ChapSmartApiSecret" class="form-label">API Secret</label>
-                        <input asp-for="Settings.ChapSmartApiSecret" class="form-control" type="password" />
-                    </div>
-                </div>
-            </div>
-            <!-- Action Buttons -->
             <div class="d-flex gap-3">
                 <button type="submit" class="btn btn-primary" id="SaveSettings">Save Settings</button>
-                <button type="submit"
-                        formaction="@Url.Action("TestConnection", "UIChapSmart", new { storeId = Model.StoreId })"
-                        class="btn btn-secondary" id="TestConnection">
-                    Test Connection
-                </button>
                 <a asp-action="Dashboard" asp-route-storeId="@Model.StoreId"
                    class="btn btn-outline-info">
-                    Payout Dashboard →
+                    Cashout History →
                 </a>
             </div>
         </form>

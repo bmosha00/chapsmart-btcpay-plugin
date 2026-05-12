@@ -66,48 +66,45 @@ public class UIChapSmartController : Controller
         var settings = new ChapSmartSettings
         {
             StoreId = storeId,
+            MerchantId = model.Settings.MerchantId?.Trim() ?? "",
+            ApiUrl = string.IsNullOrWhiteSpace(model.Settings.ApiUrl)
+                ? "https://backend.chapsmart.com"
+                : model.Settings.ApiUrl.Trim(),
             Enabled = model.Settings.Enabled,
-            AutoPayout = model.Settings.AutoPayout,
-            ChapSmartApiUrl = model.Settings.ChapSmartApiUrl ?? "",
-            ChapSmartApiKey = model.Settings.ChapSmartApiKey ?? "",
-            ChapSmartApiSecret = model.Settings.ChapSmartApiSecret ?? "",
+            AutoCashout = model.Settings.AutoCashout,
+            MinCashout = model.Settings.MinCashout > 0 ? model.Settings.MinCashout : 2500m
         };
 
         await _settingsRepository.SaveSettings(storeId, settings);
-        TempData["SuccessMessage"] = "Settings saved successfully!";
-        return RedirectToAction(nameof(EditChapSmart), new { storeId });
-    }
-
-    [HttpPost("stores/{storeId}/plugins/chapsmart/test")]
-    public async Task<IActionResult> TestConnection(string storeId)
-    {
-        var settings = await _settingsRepository.GetSettings(storeId);
-        if (settings == null || string.IsNullOrEmpty(settings.ChapSmartApiKey))
-        {
-            TempData["ErrorMessage"] = "Please save API credentials first.";
-            return RedirectToAction(nameof(EditChapSmart), new { storeId });
-        }
-
-        var success = await _chapSmartService.TestConnection(settings);
-        TempData[success ? "SuccessMessage" : "ErrorMessage"] =
-            success ? "Connected to ChapSmart API successfully!" : "Connection failed. Check your credentials.";
+        TempData["SuccessMessage"] = "Settings saved!";
         return RedirectToAction(nameof(EditChapSmart), new { storeId });
     }
 
     [HttpGet("stores/{storeId}/plugins/chapsmart/dashboard")]
     public async Task<IActionResult> Dashboard(string storeId, string status = null)
     {
-        await using var db = _dbFactory.CreateContext();
-        var query = db.Payouts.Where(p => p.StoreId == storeId);
-        if (!string.IsNullOrEmpty(status))
-            query = query.Where(p => p.Status == status);
+        List<ChapSmartPayout> payouts = new();
+        int total = 0, completed = 0, failed = 0;
+        decimal volume = 0;
 
-        var payouts = await query.OrderByDescending(p => p.CreatedAt).Take(50).ToListAsync();
-        var total = await db.Payouts.CountAsync(p => p.StoreId == storeId);
-        var completed = await db.Payouts.CountAsync(p => p.StoreId == storeId && p.Status == "completed");
-        var failed = await db.Payouts.CountAsync(p => p.StoreId == storeId && p.Status == "failed");
-        var volume = await db.Payouts.Where(p => p.StoreId == storeId && p.Status == "completed")
-            .SumAsync(p => (decimal?)p.AmountTZS) ?? 0;
+        try
+        {
+            await using var db = _dbFactory.CreateContext();
+            var query = db.Payouts.Where(p => p.StoreId == storeId);
+            if (!string.IsNullOrEmpty(status))
+                query = query.Where(p => p.Status == status);
+
+            payouts = await query.OrderByDescending(p => p.CreatedAt).Take(50).ToListAsync();
+            total = await db.Payouts.CountAsync(p => p.StoreId == storeId);
+            completed = await db.Payouts.CountAsync(p => p.StoreId == storeId && p.Status == "lightning_paid");
+            failed = await db.Payouts.CountAsync(p => p.StoreId == storeId && p.Status == "failed");
+            volume = await db.Payouts.Where(p => p.StoreId == storeId && p.Status == "lightning_paid")
+                .SumAsync(p => (decimal?)p.AmountTZS) ?? 0;
+        }
+        catch (Exception)
+        {
+            // Table might not exist yet
+        }
 
         var vm = new ChapSmartDashboardViewModel
         {
@@ -129,17 +126,18 @@ public class UIChapSmartController : Controller
     [HttpGet("stores/{storeId}/plugins/chapsmart/payout/{payoutId}")]
     public async Task<IActionResult> PayoutDetail(string storeId, string payoutId)
     {
-        await using var db = _dbFactory.CreateContext();
-        var payout = await db.Payouts.FirstOrDefaultAsync(p => p.Id == payoutId && p.StoreId == storeId);
-        if (payout == null) return NotFound();
-
-        var vm = new ChapSmartPayoutDetailViewModel
+        try
         {
-            StoreId = storeId,
-            Payout = payout
-        };
+            await using var db = _dbFactory.CreateContext();
+            var payout = await db.Payouts.FirstOrDefaultAsync(p => p.Id == payoutId && p.StoreId == storeId);
+            if (payout == null) return NotFound();
 
-        return View(vm);
+            return View(new ChapSmartPayoutDetailViewModel { StoreId = storeId, Payout = payout });
+        }
+        catch
+        {
+            return NotFound();
+        }
     }
 }
 
