@@ -71,9 +71,6 @@ public class UIChapSmartController : Controller
             ChapSmartApiUrl = model.Settings.ChapSmartApiUrl ?? "",
             ChapSmartApiKey = model.Settings.ChapSmartApiKey ?? "",
             ChapSmartApiSecret = model.Settings.ChapSmartApiSecret ?? "",
-            FeePercent = model.Settings.FeePercent,
-            UsdToTzsRate = model.Settings.UsdToTzsRate,
-            DailyLimit = model.Settings.DailyLimit
         };
 
         await _settingsRepository.SaveSettings(storeId, settings);

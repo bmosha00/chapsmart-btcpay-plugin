@@ -75,32 +75,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Payout Configuration -->
-            <div class="card mb-4">
-                <div class="card-body">
-                    <h5 class="card-title mb-3">Payout Configuration</h5>
-
-                    <div class="mb-3">
-                        <label asp-for="Settings.FeePercent" class="form-label">Fee Percent (%)</label>
-                        <input asp-for="Settings.FeePercent" class="form-control" type="number" step="0.01" min="0" max="10" />
-                        <div class="form-text">Fee charged on each payout (e.g., 2.2).</div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label asp-for="Settings.UsdToTzsRate" class="form-label">USD/TZS Exchange Rate</label>
-                        <input asp-for="Settings.UsdToTzsRate" class="form-control" type="number" step="0.01" />
-                        <div class="form-text">Current exchange rate for USD to TZS conversion.</div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label asp-for="Settings.DailyLimit" class="form-label">Daily Payout Limit (TZS)</label>
-                        <input asp-for="Settings.DailyLimit" class="form-control" type="number" step="1000" />
-                        <div class="form-text">Maximum total TZS payouts per day for this store.</div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Action Buttons -->
             <div class="d-flex gap-3">
                 <button type="submit" class="btn btn-primary" id="SaveSettings">Save Settings</button>

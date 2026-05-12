@@ -1,7 +1,5 @@
 using System;
 using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -23,8 +21,11 @@ public class ChapSmartService
     }
 
     /// <summary>
-    /// Call ChapSmart API to trigger M-Pesa payout
-    /// This is the Phase A bridge — calls the existing Node.js backend
+    /// Call ChapSmart API to trigger M-Pesa payout.
+    /// Returns either:
+    ///   - Success (Case 1: backend already processed via webhook)
+    ///   - PaymentRequired (Case 2: plugin must pay a bolt11 Lightning invoice)
+    ///   - Failure (validation error, etc.)
     /// </summary>
     public async Task<ChapSmartPayoutResult> TriggerMpesaPayout(
         ChapSmartSettings settings,
@@ -40,7 +41,6 @@ public class ChapSmartService
             client.DefaultRequestHeaders.Add("X-API-Key", settings.ChapSmartApiKey);
             client.DefaultRequestHeaders.Add("X-API-Secret", settings.ChapSmartApiSecret);
 
-            // Call ChapSmart internal payout endpoint
             var payload = new
             {
                 phoneNumber,
@@ -56,11 +56,46 @@ public class ChapSmartService
             var response = await client.PostAsync("api/v1/internal/payout", content);
             var responseBody = await response.Content.ReadAsStringAsync();
 
+            _logger.LogInformation(
+                "[ChapSmart] /internal/payout response: {StatusCode} - {Body}",
+                response.StatusCode, responseBody);
+
             if (response.IsSuccessStatusCode)
             {
+                // Parse the response to check if payment is required (Case 2)
+                using var doc = JsonDocument.Parse(responseBody);
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("paymentRequired", out var paymentRequired) &&
+                    paymentRequired.GetBoolean())
+                {
+                    // Case 2: Backend needs us to pay a Lightning invoice
+                    var bolt11 = root.GetProperty("bolt11").GetString();
+                    var amountSats = root.TryGetProperty("amountSats", out var sats) ? sats.GetInt64() : 0;
+                    var payoutId = root.TryGetProperty("payoutId", out var pid) ? pid.GetString() : null;
+                    var expiresIn = root.TryGetProperty("expiresIn", out var exp) ? exp.GetInt32() : 600;
+
+                    _logger.LogInformation(
+                        "[ChapSmart] Case 2: Payment required — {Sats} sats bolt11 for invoice {InvoiceId}",
+                        amountSats, invoiceId);
+
+                    return new ChapSmartPayoutResult
+                    {
+                        Success = false,
+                        PaymentRequired = true,
+                        Bolt11 = bolt11,
+                        AmountSats = amountSats,
+                        PayoutId = payoutId,
+                        ExpiresIn = expiresIn,
+                        Message = "Lightning payment required",
+                        ResponseData = responseBody
+                    };
+                }
+
+                // Case 1: Backend handled it (or already processed)
                 _logger.LogInformation(
-                    "[ChapSmart] M-Pesa payout triggered: {Amount} TZS to {Phone} for invoice {InvoiceId}",
-                    amountTZS, phoneNumber, invoiceId);
+                    "[ChapSmart] Case 1: Payout handled by backend for invoice {InvoiceId}",
+                    invoiceId);
 
                 return new ChapSmartPayoutResult
                 {
@@ -122,6 +157,13 @@ public class ChapSmartPayoutResult
     public bool Success { get; set; }
     public string Message { get; set; }
     public string ResponseData { get; set; }
+
+    // Case 2 fields
+    public bool PaymentRequired { get; set; }
+    public string Bolt11 { get; set; }
+    public long AmountSats { get; set; }
+    public string PayoutId { get; set; }
+    public int ExpiresIn { get; set; }
 }
 
 public class ChapSmartSettings
@@ -130,9 +172,6 @@ public class ChapSmartSettings
     public string ChapSmartApiUrl { get; set; } = "";
     public string ChapSmartApiKey { get; set; }
     public string ChapSmartApiSecret { get; set; }
-    public decimal FeePercent { get; set; } = 2.2m;
-    public decimal UsdToTzsRate { get; set; } = 2520m;
     public bool Enabled { get; set; }
     public bool AutoPayout { get; set; } = true;
-    public decimal DailyLimit { get; set; } = 1000000m; // 1M TZS daily limit
 }
