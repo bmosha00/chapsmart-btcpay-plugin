@@ -22,10 +22,10 @@ public class ChapSmartService
 
     /// <summary>
     /// Call ChapSmart API to trigger M-Pesa payout.
-    /// Returns either:
-    ///   - Success (Case 1: backend already processed via webhook)
-    ///   - PaymentRequired (Case 2: plugin must pay a bolt11 Lightning invoice)
-    ///   - Failure (validation error, etc.)
+    /// The backend returns one of:
+    ///   - paymentRequired: true + bolt11 (plugin must pay the Lightning invoice)
+    ///   - alreadyProcessed: true (dedup — same invoiceId was already submitted)
+    ///   - error (validation failure, price fetch failure, etc.)
     /// </summary>
     public async Task<ChapSmartPayoutResult> TriggerMpesaPayout(
         ChapSmartSettings settings,
@@ -62,26 +62,39 @@ public class ChapSmartService
 
             if (response.IsSuccessStatusCode)
             {
-                // Parse the response to check if payment is required (Case 2)
                 using var doc = JsonDocument.Parse(responseBody);
                 var root = doc.RootElement;
 
+                // Check for dedup response
+                if (root.TryGetProperty("alreadyProcessed", out var alreadyProcessed) &&
+                    alreadyProcessed.GetBoolean())
+                {
+                    _logger.LogInformation(
+                        "[ChapSmart] Already processed (dedup) for invoice {InvoiceId}", invoiceId);
+
+                    return new ChapSmartPayoutResult
+                    {
+                        AlreadyProcessed = true,
+                        Message = "Already processed",
+                        ResponseData = responseBody
+                    };
+                }
+
+                // Check for payment required (Case 2)
                 if (root.TryGetProperty("paymentRequired", out var paymentRequired) &&
                     paymentRequired.GetBoolean())
                 {
-                    // Case 2: Backend needs us to pay a Lightning invoice
                     var bolt11 = root.GetProperty("bolt11").GetString();
                     var amountSats = root.TryGetProperty("amountSats", out var sats) ? sats.GetInt64() : 0;
                     var payoutId = root.TryGetProperty("payoutId", out var pid) ? pid.GetString() : null;
                     var expiresIn = root.TryGetProperty("expiresIn", out var exp) ? exp.GetInt32() : 600;
 
                     _logger.LogInformation(
-                        "[ChapSmart] Case 2: Payment required — {Sats} sats bolt11 for invoice {InvoiceId}",
-                        amountSats, invoiceId);
+                        "[ChapSmart] Payment required: {Sats} sats bolt11 for invoice {InvoiceId}, payoutId: {PayoutId}",
+                        amountSats, invoiceId, payoutId);
 
                     return new ChapSmartPayoutResult
                     {
-                        Success = false,
                         PaymentRequired = true,
                         Bolt11 = bolt11,
                         AmountSats = amountSats,
@@ -92,28 +105,36 @@ public class ChapSmartService
                     };
                 }
 
-                // Case 1: Backend handled it (or already processed)
-                _logger.LogInformation(
-                    "[ChapSmart] Case 1: Payout handled by backend for invoice {InvoiceId}",
-                    invoiceId);
+                // Unexpected success response
+                _logger.LogWarning(
+                    "[ChapSmart] Unexpected 200 response for invoice {InvoiceId}: {Body}",
+                    invoiceId, responseBody);
 
                 return new ChapSmartPayoutResult
                 {
-                    Success = true,
-                    Message = "Payout initiated",
+                    Message = "Unexpected response format",
                     ResponseData = responseBody
                 };
             }
             else
             {
+                // Error response
+                var errorMsg = responseBody;
+                try
+                {
+                    using var errDoc = JsonDocument.Parse(responseBody);
+                    if (errDoc.RootElement.TryGetProperty("error", out var errProp))
+                        errorMsg = errProp.GetString();
+                }
+                catch { /* use raw body */ }
+
                 _logger.LogWarning(
-                    "[ChapSmart] Payout failed: {StatusCode} - {Response} for invoice {InvoiceId}",
-                    response.StatusCode, responseBody, invoiceId);
+                    "[ChapSmart] Payout error: {StatusCode} - {Error} for invoice {InvoiceId}",
+                    response.StatusCode, errorMsg, invoiceId);
 
                 return new ChapSmartPayoutResult
                 {
-                    Success = false,
-                    Message = $"API returned {response.StatusCode}",
+                    Message = $"{response.StatusCode}: {errorMsg}",
                     ResponseData = responseBody
                 };
             }
@@ -123,7 +144,6 @@ public class ChapSmartService
             _logger.LogError(ex, "[ChapSmart] Payout error for invoice {InvoiceId}", invoiceId);
             return new ChapSmartPayoutResult
             {
-                Success = false,
                 Message = ex.Message,
                 ResponseData = null
             };
@@ -154,11 +174,13 @@ public class ChapSmartService
 
 public class ChapSmartPayoutResult
 {
-    public bool Success { get; set; }
     public string Message { get; set; }
     public string ResponseData { get; set; }
 
-    // Case 2 fields
+    // Dedup
+    public bool AlreadyProcessed { get; set; }
+
+    // Case 2: Lightning payment required
     public bool PaymentRequired { get; set; }
     public string Bolt11 { get; set; }
     public long AmountSats { get; set; }
