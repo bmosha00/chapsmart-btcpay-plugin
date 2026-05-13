@@ -49,7 +49,7 @@ After installation, go to **Store → Plugins → ChapSmart** in your BTCPay das
 | **Auto Cashout** | Automatically cash out every settled invoice with `amountTZS` metadata | On |
 | **Merchant ID** | Your ChapSmart merchant ID (`mch_xxx`) | — |
 | **Min Cashout** | Skip invoices below this TZS amount | 2,500 |
-| **API URL** | ChapSmart backend URL (only change for testing) | `https://backend.chapsmart.com` |
+| **API URL** | ChapSmart backend URL (only change for testing) | `https://api.chapsmart.com` |
 
 No API keys or secrets needed. The Merchant ID is your only credential.
 
@@ -71,7 +71,7 @@ The plugin calls two endpoints on the ChapSmart backend:
 
 ### Create Cashout
 ```
-POST https://backend.chapsmart.com/api/v1/cashout
+POST https://api.chapsmart.com/api/v1/cashout
 Content-Type: application/json
 
 { "merchantId": "mch_xxx", "amountTZS": 25000 }
@@ -81,7 +81,7 @@ Returns: `{ bolt11, amountSats, cashoutId, expiresIn, merchantName }`
 
 ### Check Status
 ```
-GET https://backend.chapsmart.com/api/v1/cashout/status/{cashoutId}
+GET https://api.chapsmart.com/api/v1/cashout/status/{cashoutId}
 ```
 
 Returns: `{ status, amountTZS, amountSats, merchantName }`
