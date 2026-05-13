@@ -1,272 +1,156 @@
-# ChapSmart — BTCPay Server Plugin
+# ChapSmart Cashout — BTCPay Server Plugin
 
-**Automatic Bitcoin to Mobile Money payouts for BTCPay Server.**
-
-When a BTCPay invoice is paid (Lightning, on-chain, or altcoin via Exolix), ChapSmart automatically sends local currency to the recipient's mobile money wallet.
-
-> ⚡ Bitcoin in → 📱 Mobile money out — in seconds.
+Convert your Bitcoin earnings to Tanzanian Shillings (TZS) and receive them directly on M-Pesa. Automatically.
 
 ## How It Works
 
-```
-Customer pays BTCPay invoice (Lightning / On-chain / Altcoin)
-    ↓
-BTCPay marks invoice as settled
-    ↓
-ChapSmart plugin catches the event
-    ↓
-Reads phoneNumber + amount from invoice metadata
-    ↓
-Calls your payout API to push funds to mobile money
-    ↓
-Recipient receives local currency on their phone
-```
+1. A customer pays a BTCPay invoice on your server (Lightning or on-chain)
+2. The plugin catches the invoice settlement
+3. Plugin calls ChapSmart's cashout API with your Merchant ID and the TZS amount
+4. ChapSmart returns a Lightning invoice — the plugin pays it from your wallet
+5. ChapSmart receives the BTC and sends TZS to your registered M-Pesa number
+6. You get an M-Pesa notification. Done.
 
-No manual intervention. No copy-pasting. Fully automated.
-
-## Features
-
-- **Automatic payouts** — Triggers mobile money payout the moment an invoice is settled
-- **Manual mode** — Review payouts before triggering (optional)
-- **Per-store settings** — Each BTCPay store has independent configuration
-- **Payout dashboard** — View all payouts with status, filter by completed/failed/processing
-- **Deduplication** — Atomic database transactions prevent double payouts
-- **Rate limiting** — Built-in protection against payout spam
-- **Retry logic** — Failed payouts are automatically retried
-- **Audit trail** — Every payout is recorded with timestamps, amounts, and provider transaction IDs
+The plugin's job ends at step 4. ChapSmart handles everything after that.
 
 ## Requirements
 
-- BTCPay Server **v2.0.1** or higher
-- .NET 8.0 runtime (included in BTCPay Server)
-- A payout API endpoint that accepts `{ phoneNumber, amount, recipientName, invoiceId }` and triggers the mobile money transfer
+- BTCPay Server v2.0.1 or later
+- Lightning Network enabled on your BTCPay store
+- A ChapSmart Merchant ID (register at [chapsmart.com](https://chapsmart.com))
 
 ## Installation
 
-### Option A: Upload DLL (Recommended)
+### From Source
 
-1. Download the latest release from [Releases](https://github.com/bmosha00/chapsmart-btcpay-plugin/releases)
-2. In BTCPay Server, go to **Server Settings → Plugins → Upload Plugin**
-3. Upload the `.btcpay` plugin file
-4. Restart BTCPay Server
+```bash
+git clone --recurse-submodules https://github.com/bmosha00/chapsmart-btcpay-plugin.git
+cd chapsmart-btcpay-plugin
+dotnet publish BTCPayServer.Plugins.ChapSmart -c Release
+```
 
-### Option B: Manual Install
+Copy the DLL from `BTCPayServer.Plugins.ChapSmart/bin/Release/net8.0/publish/` to your BTCPay Server's plugin directory.
 
-1. Build the plugin:
-   ```bash
-   git clone https://github.com/bmosha00/chapsmart-btcpay-plugin.git --recurse-submodules
-   cd chapsmart-btcpay-plugin
-   dotnet publish BTCPayServer.Plugins.ChapSmart -c Release
-   ```
+### Manual Deploy (Docker)
 
-2. Copy the output to your BTCPay Server plugins directory:
-   ```bash
-   # Docker deployment
-   docker cp BTCPayServer.Plugins.ChapSmart/bin/Release/net8.0/publish/. \
-     generated_btcpayserver_1:/root/.btcpayserver/Plugins/BTCPayServer.Plugins.ChapSmart/
-   
-   docker restart generated_btcpayserver_1
-   ```
+```bash
+docker cp BTCPayServer.Plugins.ChapSmart.dll \
+  btcpayserver:/root/.btcpayserver/Plugins/BTCPayServer.Plugins.ChapSmart/
+docker restart btcpayserver
+```
 
 ## Configuration
 
-After installation, navigate to your **Store → ChapSmart** in the sidebar.
+After installation, go to **Store → Plugins → ChapSmart** in your BTCPay dashboard.
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| **Enable** | Turn on/off automatic payouts for this store | Off |
-| **Auto Payout** | Trigger payout immediately on invoice settlement | On |
-| **API URL** | Your payout API base URL | — |
-| **API Key** | Authentication key for your payout API | — |
-| **API Secret** | Authentication secret for your payout API | — |
-| **Fee Percent** | Fee percentage applied to each payout | 2.2% |
-| **Exchange Rate** | USD to local currency exchange rate | — |
-| **Daily Limit** | Maximum payout amount per day (local currency) | 1,000,000 |
+| **Enable** | Turn cashout on/off for this store | Off |
+| **Auto Cashout** | Automatically cash out every settled invoice with `amountTZS` metadata | On |
+| **Merchant ID** | Your ChapSmart merchant ID (`mch_xxx`) | — |
+| **Min Cashout** | Skip invoices below this TZS amount | 2,500 |
+| **API URL** | ChapSmart backend URL (only change for testing) | `https://backend.chapsmart.com` |
+
+No API keys or secrets needed. The Merchant ID is your only credential.
 
 ## Invoice Metadata
 
-For ChapSmart to process a payout, the BTCPay invoice must include the following metadata fields:
+For the plugin to trigger a cashout, the BTCPay invoice must include `amountTZS` in its metadata:
 
 ```json
 {
-  "phoneNumber": "+255754xxxx94",
-  "amountTZS": 25000,
-  "recipientName": "John Doe"
+  "amountTZS": 25000
 }
 ```
 
-Invoices without these fields are ignored by the plugin.
+Invoices without `amountTZS` in metadata are ignored by the plugin.
 
-You can set metadata when creating invoices via the [Greenfield API](https://docs.btcpayserver.org/API/Greenfield/v1/):
+## API
 
-```bash
-curl -X POST "https://your-btcpay.com/api/v1/stores/{storeId}/invoices" \
-  -H "Authorization: token YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "amount": 0.00012,
-    "currency": "BTC",
-    "metadata": {
-      "phoneNumber": "+255754xxxxx4",
-      "amountTZS": 25000,
-      "recipientName": "John Doe"
-    }
-  }'
+The plugin calls two endpoints on the ChapSmart backend:
+
+### Create Cashout
+```
+POST https://backend.chapsmart.com/api/v1/cashout
+Content-Type: application/json
+
+{ "merchantId": "mch_xxx", "amountTZS": 25000 }
 ```
 
-## Architecture
+Returns: `{ bolt11, amountSats, cashoutId, expiresIn, merchantName }`
 
-ChapSmart is a **Phase A (Bridge) plugin** — it runs inside BTCPay Server and calls an external payout API for the actual mobile money transfer.
-
+### Check Status
 ```
-┌─────────────────────────────────┐
-│       BTCPay Server             │
-│                                 │
-│  ┌───────────────────────────┐  │
-│  │   ChapSmart Plugin        │  │
-│  │                           │  │
-│  │  • Invoice Event Handler  │  │
-│  │  • Settings Repository    │  │
-│  │  • Payout Database        │  │
-│  │  • Dashboard UI           │  │
-│  └──────────┬────────────────┘  │
-│             │ HTTP POST         │
-└─────────────┼───────────────────┘
-              │
-              ▼
-┌─────────────────────────────────┐
-│     Your Payout API             │
-│                                 │
-│  Receives: phoneNumber, amount  │
-│  Triggers: Mobile money push    │
-│  Returns: success/failure       │
-└─────────────────────────────────┘
+GET https://backend.chapsmart.com/api/v1/cashout/status/{cashoutId}
 ```
 
-A future **Phase B (Native)** version will handle mobile money API calls directly within the plugin, eliminating the need for an external payout API.
+Returns: `{ status, amountTZS, amountSats, merchantName }`
 
-## Development
+Both endpoints are public — no authentication headers required.
 
-### Prerequisites
+## Cashout Statuses
 
-- [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- Git
+| Status | Meaning |
+|--------|---------|
+| `processing` | Plugin is calling the cashout API |
+| `paying_lightning` | Plugin is paying the Lightning invoice |
+| `lightning_paid` | BTC sent to ChapSmart. M-Pesa is being processed. |
+| `failed` | Something went wrong. Check error message in dashboard. |
 
-### Build from Source
+## Security
 
-```bash
-# Clone with BTCPay Server submodule
-git clone https://github.com/bmosha00/chapsmart-btcpay-plugin.git --recurse-submodules
-cd chapsmart-btcpay-plugin
+- ChapSmart **never** sends TZS until BTC is confirmed in ChapSmart's wallet
+- The backend calculates the required BTC amount independently — invoice metadata cannot inflate the payout
+- Lightning invoices enforce exact payment amounts
+- The M-Pesa number is set at merchant registration, not in the request — no one can redirect your payout
 
-# Checkout the BTCPay version matching your server
-cd btcpayserver
-git checkout v2.3.3
-cd ..
-
-# Build BTCPay Server (first time only, ~8 minutes)
-dotnet build btcpayserver
-
-# Build the plugin
-dotnet build BTCPayServer.Plugins.ChapSmart
-```
-
-### Project Structure
+## Project Structure
 
 ```
 BTCPayServer.Plugins.ChapSmart/
-├── Plugin.cs                          # Entry point, registers services
-├── PluginMigrationRunner.cs           # Runs database migrations on startup
+├── Plugin.cs                          # Entry point, service registration
 ├── Controllers/
-│   └── UIChapSmartController.cs       # Settings + dashboard pages
+│   └── UIChapSmartController.cs       # Settings page, dashboard, detail view
 ├── Services/
-│   ├── ChapSmartService.cs            # Payout API client
-│   ├── ChapSmartInvoiceHandler.cs     # Invoice event listener
-│   ├── ChapSmartSettingsRepository.cs # Per-store settings storage
-│   └── ChapSmartDbContextFactory.cs   # Database context factory
+│   ├── ChapSmartService.cs            # Cashout API client
+│   ├── ChapSmartInvoiceHandler.cs     # Invoice event handler + Lightning payment
+│   └── ChapSmartSettingsRepository.cs # Per-store settings via BTCPay store blob
 ├── Data/
-│   ├── ChapSmartDbContext.cs           # EF Core database context
-│   ├── ChapSmartPayout.cs             # Payout entity model
-│   └── Migrations/                    # Database migrations
+│   ├── ChapSmartPayout.cs             # Payout entity
+│   ├── ChapSmartDbContext.cs          # EF Core context
+│   ├── ChapSmartDbContextFactory.cs   # DB context factory
+│   └── Migrations/                    # EF Core migrations
 ├── Views/
-│   ├── _ViewImports.cshtml
+│   ├── UIChapSmart/
+│   │   ├── EditChapSmart.cshtml       # Settings page
+│   │   ├── Dashboard.cshtml           # Cashout history
+│   │   └── PayoutDetail.cshtml        # Individual cashout detail
 │   ├── Shared/
-│   │   └── ChapSmartNav.cshtml        # Store sidebar navigation
-│   └── UIChapSmart/
-│       ├── EditChapSmart.cshtml       # Settings page
-│       ├── Dashboard.cshtml           # Payout dashboard
-│       └── PayoutDetail.cshtml        # Individual payout detail
+│   │   └── ChapSmartNav.cshtml        # Sidebar navigation
+│   └── _ViewImports.cshtml            # Razor imports
 └── Resources/
     └── img/
+        └── chapsmart-logo.png         # Plugin logo
 ```
 
-## Payout API Contract
+## Merchant Registration
 
-Your external payout API must implement the following endpoint:
+Contact ChapSmart to register as a merchant. You'll provide your M-Pesa number and receive a Merchant ID to enter in the plugin settings.
 
-### POST /api/v1/internal/payout
+## Amount Limits
 
-**Request:**
-```json
-{
-  "phoneNumber": "+255754xxxx94",
-  "amountTZS": 25000,
-  "recipientName": "John Doe",
-  "invoiceId": "ABC123",
-  "source": "btcpay-plugin"
-}
-```
-
-**Success Response (200):**
-```json
-{
-  "success": true,
-  "message": "Payout initiated",
-  "payoutId": "PAYOUT-abc-123"
-}
-```
-
-**Already Processed Response (200):**
-```json
-{
-  "success": true,
-  "message": "Already processed",
-  "alreadyProcessed": true
-}
-```
-
-**Error Response (4xx/5xx):**
-```json
-{
-  "success": false,
-  "error": "Insufficient balance"
-}
-```
-
-## Roadmap
-
-- [x] Plugin scaffold and BTCPay integration
-- [x] Invoice event handler with deduplication
-- [x] Per-store settings with API credentials
-- [x] Payout database with EF Core migrations
-- [x] Store sidebar navigation
-- [ ] Full settings page UI (BTCPay layout integration)
-- [ ] Payout dashboard with stats and filtering
-- [ ] End-to-end testing with real mobile money
-- [ ] Phase B: Native mobile money API integration
-- [ ] Multi-country support (Kenya, Uganda, Ghana)
-- [ ] BTCPay Plugin Directory submission
+| Limit | Value |
+|-------|-------|
+| Minimum cashout | 2,500 TZS |
+| Maximum cashout | 1,000,000 TZS |
+| Fee | 2.2% (handled by backend, transparent to merchant) |
 
 ## License
 
 MIT
 
-## Contributing
+## Links
 
-Contributions are welcome! Please open an issue first to discuss what you'd like to change.
-
-## Acknowledgments
-
-- [BTCPay Server](https://btcpayserver.org/) — Open source payment processor
-- [BTCPay Plugin Template](https://github.com/btcpayserver/btcpayserver-plugin-template) — Starting point for this plugin
-- Built for Africa's mobile money ecosystem 🌍
+- [ChapSmart](https://chapsmart.com)
+- [BTCPay Server](https://btcpayserver.org)
+- [BTCPay Plugin Development](https://docs.btcpayserver.org/Development/Plugins/)
