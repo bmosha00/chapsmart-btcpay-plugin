@@ -45,7 +45,7 @@ public class ChapSmartInvoiceHandler : IHostedService
     // Update this when you get the pubkey from: BTCPay Dashboard → Wallets → Lightning → Connection Info
     // Or via API: GET /api/v1/stores/{storeId}/lightning/BTC/info (needs canuselightningnode permission)
     // Leave empty to skip destination verification (NOT RECOMMENDED for production)
-    private static readonly string[] TrustedNodePubkeys = Array.Empty<string>();
+    private static readonly string[] TrustedNodePubkeys = new[] { "029fc6217803748cc8fb6b041acbe81e6e295a914487dcea7e5d7e141b64883826" };
 
     // SECURITY: MerchantId format validation
     private static readonly Regex MerchantIdPattern = new(@"^mch_[a-f0-9]{16}$", RegexOptions.Compiled);
