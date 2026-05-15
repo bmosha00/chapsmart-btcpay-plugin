@@ -5,9 +5,24 @@
 
   <!-- Plugin specific properties -->
   <PropertyGroup>
-    <Product>ChapSmart - M-Pesa Payout</Product>
-    <Description>Automatic Bitcoin to M-Pesa payout for Tanzania. When a BTCPay invoice is paid, ChapSmart automatically sends TZS to the recipient via M-Pesa.</Description>
+    <Product>ChapSmart Cashout</Product>
+    <Description>Auto-convert Bitcoin to TZS via M-Pesa. When a BTCPay invoice settles, ChapSmart sends TZS to the merchants registered M-Pesa number via Lightning.</Description>
     <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <!-- NuGet Package properties for BTCPay Plugin Directory -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>BTCPayServer.Plugins.ChapSmart</PackageId>
+    <Authors>ChapSmart Payments</Authors>
+    <Copyright>Copyright (c) 2026 ChapSmart Payments</Copyright>
+    <PackageProjectUrl>https://github.com/bmosha00/chapsmart-btcpay-plugin</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/bmosha00/chapsmart-btcpay-plugin</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>btcpay plugin chapsmart mpesa tanzania lightning cashout bitcoin mobile-money</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>chapsmart-logo.png</PackageIcon>
   </PropertyGroup>
 
   <!-- Plugin development properties -->
@@ -17,7 +32,6 @@
     <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
   </PropertyGroup>
 
-  <!-- This will make sure that referencing BTCPayServer doesn't put any artifact in the published directory -->
   <ItemDefinitionGroup>
     <ProjectReference>
       <Properties>StaticWebAssetsEnabled=false</Properties>
@@ -26,32 +40,13 @@
     </ProjectReference>
   </ItemDefinitionGroup>
 
-
-  <!-- If you need Entity Framework, you can uncomment this. This will make it usable in your project without publishing assemblies
-  already referenced by BTCPay Server Core project -->
-  <!--
-  <ItemGroup Condition="$(Configuration) != 'Release'">
-    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.9.2" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.9.2" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
-  </ItemGroup>
-  -->
-
-  <!-- If you reference another project, by default, the dlls won't be copied in the published plugin, you need <Private>true</Private> -->
-  <!--
-  <ItemGroup>
-    <ProjectReference Include="..\submodules\some-client\src\Some.Client\Some.Client.csproj">
-      <Private>true</Private>
-    </ProjectReference>
-  </ItemGroup>
-  -->
-
   <ItemGroup>
     <ProjectReference Include="..\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
     <EmbeddedResource Include="Resources\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="Resources\img\chapsmart-logo.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>
